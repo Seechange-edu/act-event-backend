@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   action_trigger:
-    if: startsWith(github.ref, 'refs/tags/cms_backend/')
+    if: startsWith(github.ref, 'refs/tags/event-backend/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
