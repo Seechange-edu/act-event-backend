@@ -13,6 +13,9 @@ jobs:
   action_trigger:
     if: startsWith(github.ref, 'refs/tags/event-backend/')
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       fail-fast: false
 
@@ -40,12 +43,35 @@ jobs:
       - name: Maven Build
         run: mvn package -T 1C -D skipTests -D fast
 
+      - name: Setup AWS ECR Details (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-ECR-Push
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to AWS ECR
+        id: login-pf-aws-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-pf-aws-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          ACTIVE: ${{ env.ACTIVE }}
         run: |
-          echo ${{ secrets.TOKEN }} | docker login registry.digitalocean.com \
-          -u "${{ vars.DO_DOCR_LOGIN_EMAIL }}" --password-stdin
-          docker build --tag ${{ env.IMAGE }} --file Dockerfile-Self .
-          docker push ${{ env.IMAGE }}
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}"
+          docker build --tag ${IMAGE_URI} --file Dockerfile-Self .
+          docker push ${IMAGE_URI}
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+
+      - name: Get ECR login token
+        id: ecr-login-token
+        run: |
+          ECR_TOKEN=$(aws ecr get-login-password --region ${{ vars.AWS_REGION }})
+          echo "token<<EOF" >> $GITHUB_OUTPUT
+          echo "$ECR_TOKEN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: SSH and Run Docker image
         uses: appleboy/ssh-action@v1.2.0
@@ -54,15 +80,22 @@ jobs:
           username: ${{ vars.REMOTE_USER }}
           key: ${{ secrets.REMOTE_SSH_KEY }}
           script: |
-            echo ${{ secrets.TOKEN }} | docker login registry.digitalocean.com \
-            -u "${{ vars.DO_DOCR_LOGIN_EMAIL }}" --password-stdin
+            # Login to AWS ECR using temporary token from GitHub Actions
+            echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+            
+            IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}"
             docker pull ${{ env.IMAGE }}
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then 
               docker rm -f ${{ env.NAME }}
             fi
-            docker run --name ${{ env.NAME }} -d -p ${{ env.OUT_PORT }}:${{ env.PORT }} ${{ env.RUN_ARGS }} --restart unless-stopped ${{ env.IMAGE }}
+            docker run --name ${{ env.NAME }} -d -p ${{ env.OUT_PORT }}:${{ env.PORT }} ${{ env.RUN_ARGS }} --restart unless-stopped ${IMAGE_URI}
             docker image prune --force
             docker container prune --force
+        env:
+          ECR_REGISTRY: ${{ steps.login-pf-aws-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          ACTIVE: ${{ env.ACTIVE }}
+          ECR_TOKEN: ${{ steps.ecr-login-token.outputs.token }}
 
   notify-teams:
     if: always()
