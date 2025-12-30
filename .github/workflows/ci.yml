@@ -79,6 +79,7 @@ jobs:
           host: ${{ vars.REMOTE_HOST }}
           username: ${{ vars.REMOTE_USER }}
           key: ${{ secrets.REMOTE_SSH_KEY }}
+          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE
           script: |
             # Login to AWS ECR using temporary token from GitHub Actions
             echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
