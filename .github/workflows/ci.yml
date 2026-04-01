@@ -59,8 +59,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-pf-aws-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
           ACTIVE: ${{ env.ACTIVE }}
+          IMAGE_TAG: ${{ env.BRANCH }}
         run: |
-          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${IMAGE_TAG}"
           docker build --tag ${IMAGE_URI} --file Dockerfile-Self .
           docker push ${IMAGE_URI}
           echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
@@ -79,12 +80,12 @@ jobs:
           host: ${{ env.REMOTE_HOST }}
           username: ${{ vars.REMOTE_USER }}
           key: ${{ secrets.REMOTE_SSH_KEY }}
-          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE
+          envs: ECR_TOKEN,ECR_REGISTRY,ECR_REPOSITORY,ACTIVE,IMAGE_TAG
           script: |
             # Login to AWS ECR using temporary token from GitHub Actions
             echo ${ECR_TOKEN} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
             
-            IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${ACTIVE}"
+            IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}/${ACTIVE}:${IMAGE_TAG}"
             docker pull ${IMAGE_URI}
             if [ "$(docker ps -a --format '{{.Names}}' | grep -c ${{ env.NAME }})" -gt 0 ]; then 
               docker rm -f ${{ env.NAME }}
@@ -97,6 +98,7 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
           ACTIVE: ${{ env.ACTIVE }}
           ECR_TOKEN: ${{ steps.ecr-login-token.outputs.token }}
+          IMAGE_TAG: ${{ env.BRANCH }}
 
   notify-teams:
     if: always()
