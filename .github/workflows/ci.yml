@@ -24,6 +24,7 @@ jobs:
       teams_webhook: ${{ steps.deploy-vars.outputs.teams_webhook }}
       active: ${{ steps.deploy-vars.outputs.active }}
       image_tag: ${{ steps.deploy-vars.outputs.image_tag }}
+      channel: ${{ steps.deploy-vars.outputs.channel }}
       ecr_registry: ${{ steps.login-pf-aws-ecr.outputs.registry }}
       source_repo: ${{ steps.relinfo.outputs.source_repo }}
       commit_sha: ${{ steps.relinfo.outputs.commit_sha }}
@@ -48,6 +49,7 @@ jobs:
             echo "teams_webhook=${{ env.TEAMS_WEBHOOK }}"
             echo "active=${{ env.ACTIVE }}"
             echo "image_tag=${{ env.BRANCH }}"
+            echo "channel=${{ env.PUSHREF }}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
@@ -230,6 +232,22 @@ jobs:
               echo "Removing ${IMAGE_PREFIX}:${tag}"
               docker rmi "${IMAGE_PREFIX}:${tag}" 2>/dev/null || true
             done
+
+  # User-facing notes after a successful production deploy. Dev and UAT stay
+  # on PUSHREF dev/uat. release-meta decides single, joint, or nothing.
+  # A failure here does not fail the deploy.
+  changelog:
+    needs: [action_trigger]
+    if: needs.action_trigger.result == 'success' && needs.action_trigger.outputs.channel == 'prod'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/changelog-run.yml
+    with:
+      source_repo: ${{ needs.action_trigger.outputs.source_repo }}
+      tag: ${{ needs.action_trigger.outputs.image_tag }}
+      soft_fail: true
+    secrets: inherit
 
   # Notification only: never fails the run.
   # Targets the Teams "Workflows" webhook (Post to a channel when a webhook request is received),
