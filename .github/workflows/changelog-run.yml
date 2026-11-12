@@ -82,10 +82,8 @@ jobs:
           role-session-name: GitHubActions-Changelog
           aws-region: ${{ vars.AWS_REGION }}
 
+      # Region is vars.AWS_REGION, the same value this repository's deploy uses.
       - name: Read the changelog settings from SSM
-        env:
-          AWS_REGION: ap-east-1
-          AWS_DEFAULT_REGION: ap-east-1
         run: |
           set -euo pipefail
           param() {
